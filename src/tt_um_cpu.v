@@ -109,11 +109,16 @@ module tt_um_cpu (
     //   ui_in[7:6] == 2'b10 : uo_out = {4'b0, stored_flags} (O,C,S,Z)
     //   ui_in[7:6] == 2'b11, ui_in[0] == 0 : uo_out = alu_result
     //   ui_in[7:6] == 2'b11, ui_in[0] == 1 : uo_out = data memory[ui_in[5:1]]
-    wire [7:0] debug_mem;
+    // The memory-debug read reuses DataMemory's existing (mem_read, addr)
+    // read port instead of adding a second, parallel 32:1 mux inside
+    // DataMemory: that duplicate mux was expensive enough (a full extra
+    // 8-bit-wide 32-to-1 mux) to blow past what the fixed TinyTapeout die
+    // area can comfortably route, causing severe place & route congestion.
+    wire debug_mem_active = (ui_in[7:6] == 2'b11) && ui_in[0];
 
     wire [7:0] debug_out = (ui_in[7:6] == 2'b01) ? debug_reg :
                             (ui_in[7:6] == 2'b10) ? {4'b0, stored_flags} :
-                            (ui_in[7:6] == 2'b11) ? (ui_in[0] ? debug_mem : alu_result) :
+                            (ui_in[7:6] == 2'b11) ? (ui_in[0] ? mem_rdata : alu_result) :
                                                      pc_current[7:0];
 
     assign uo_out = debug_out;
@@ -193,15 +198,22 @@ module tt_um_cpu (
         .next_pc(next_pc) 
     );
 
+    // While a memory-debug read is selected, borrow the read port: force
+    // mem_read and swap the address for the debug-selected one. This never
+    // touches mem_write, so it can't corrupt memory; it can only momentarily
+    // change what mem_rdata shows (irrelevant unless a LOAD's own write-back
+    // happens on that exact cycle, which debug reads — done after a test
+    // program is done running — don't overlap in practice).
+    wire [7:0] dm_addr     = debug_mem_active ? {3'b0, ui_in[5:1]} : alu_result;
+    wire       dm_mem_read = mem_read | debug_mem_active;
+
     DataMemory data_mem (
         .clk(clk),
-        .mem_read(mem_read),
+        .mem_read(dm_mem_read),
         .mem_write(mem_write && mem_ready && ena),
-        .addr(alu_result),
+        .addr(dm_addr),
         .wdata(reg_data2),
-        .rdata(mem_rdata),
-        .debug_addr(ui_in[5:1]),
-        .debug_rdata(debug_mem)
+        .rdata(mem_rdata)
     );
 
     // ========================================================================
