@@ -1,9 +1,0 @@
-# Build and run the PC testbench
-iverilog -o Testbenches/out.sim Modules/ProgramCounter.v Testbenches/ProgramCounterTestBench.v
-vvp Testbenches/out.sim
-# Build and run the program memory testbench
-iverilog -o Testbenches/out.sim Modules/ProgramMemory.v Testbenches/ProgramMemoryTestBench.v
-vvp Testbenches/out.sim
-# Build and run the data memory testbench
-iverilog -o Testbenches/out.sim Modules/DataMemory.v Testbenches/DataMemoryTestBench.v
-vvp Testbenches/out.sim

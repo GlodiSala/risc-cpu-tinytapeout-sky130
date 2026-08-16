@@ -1,0 +1,19 @@
+# Simulation outputs
+*.vcd
+*.vvp
+sim.vvp
+out.sim
+
+# cocotb / pytest artifacts
+__pycache__/
+*.pyc
+test/sim_build/
+test/results.xml
+
+# Editor/OS
+.vscode/
+desktop.ini
+*.code-workspace
+
+# Secrets / tokens
+Token.txt
