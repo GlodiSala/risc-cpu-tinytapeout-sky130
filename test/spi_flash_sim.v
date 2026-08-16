@@ -33,10 +33,16 @@ module spi_flash_sim (
     localparam ADDR_BITS = 16;
     localparam DATA_BITS = 16;
 
-    // Test program, addressed by the low 4 bits of the 10-bit PC value
-    // sent in the address phase (same fixture the old testbenches used).
-    reg [15:0] memory [0:15];
+    // Test program, addressed by the full 10-bit PC value sent in the
+    // address phase. Widened from the original 16-word (4-bit) model to
+    // give self-checking test programs (see test.py) room for a PASS/FAIL
+    // tail without hitting an artificial size limit — this is testbench-only
+    // storage, so widening it has no effect on the real chip.
+    reg [15:0] memory [0:1023];
+    integer mem_init_i;
     initial begin
+        for (mem_init_i = 0; mem_init_i < 1024; mem_init_i = mem_init_i + 1)
+            memory[mem_init_i] = 16'h9000; // JMP +0 (self-loop) as a safe default
         memory[0]  = 16'h620A;  // LOADI R1, 10
         memory[1]  = 16'h6414;  // LOADI R2, 20
         memory[2]  = 16'h0650;  // ADD R3, R1, R2
@@ -47,12 +53,6 @@ module spi_flash_sim (
         memory[7]  = 16'h6BFF;  // LOADI R5, 255
         memory[8]  = 16'h6C64;  // LOADI R6, 100
         memory[9]  = 16'h9FFF;  // JMP -1
-        memory[10] = 16'h0000;
-        memory[11] = 16'h0000;
-        memory[12] = 16'h0000;
-        memory[13] = 16'h0000;
-        memory[14] = 16'h0000;
-        memory[15] = 16'h0000;
     end
 
     integer    bit_cnt;      // command+address bit counter (0..CMD_BITS+ADDR_BITS-1)
@@ -81,7 +81,7 @@ module spi_flash_sim (
         end else if (bit_cnt < CMD_BITS + ADDR_BITS) begin
             addr_shift <= {addr_shift[14:0], spi_mosi};
             if (bit_cnt == CMD_BITS + ADDR_BITS - 1) begin
-                data_word  <= memory[{addr_shift[2:0], spi_mosi}];
+                data_word  <= memory[{addr_shift[8:0], spi_mosi}];
                 data_phase <= 1'b1;
             end
             bit_cnt <= bit_cnt + 1;
