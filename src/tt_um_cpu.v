@@ -96,32 +96,9 @@ module tt_um_cpu (
     assign uio_oe[7:4]  = 4'b0000;
 
     // ========================================================================
-    // SORTIE : PC (par défaut) / debug (opt-in via ui_in)
+    // SORTIE : PC
     // ========================================================================
-    // ui_in was previously fully unused, so this is purely additive: with
-    // ui_in left at its default 0 (grounded, unconnected, or reset), uo_out
-    // keeps exposing pc_current[7:0] exactly as before. Driving ui_in[7:6]
-    // lets a tester read out internal CPU state that is otherwise only
-    // visible via RTL-only hierarchical signal references, which don't
-    // survive synthesis and can't be checked against the gate-level netlist.
-    //   ui_in[7:6] == 2'b00 : uo_out = pc_current[7:0]      (default)
-    //   ui_in[7:6] == 2'b01 : uo_out = register ui_in[2:0]
-    //   ui_in[7:6] == 2'b10 : uo_out = {4'b0, stored_flags} (O,C,S,Z)
-    //   ui_in[7:6] == 2'b11, ui_in[0] == 0 : uo_out = alu_result
-    //   ui_in[7:6] == 2'b11, ui_in[0] == 1 : uo_out = data memory[ui_in[5:1]]
-    // The memory-debug read reuses DataMemory's existing (mem_read, addr)
-    // read port instead of adding a second, parallel 32:1 mux inside
-    // DataMemory: that duplicate mux was expensive enough (a full extra
-    // 8-bit-wide 32-to-1 mux) to blow past what the fixed TinyTapeout die
-    // area can comfortably route, causing severe place & route congestion.
-    wire debug_mem_active = (ui_in[7:6] == 2'b11) && ui_in[0];
-
-    wire [7:0] debug_out = (ui_in[7:6] == 2'b01) ? debug_reg :
-                            (ui_in[7:6] == 2'b10) ? {4'b0, stored_flags} :
-                            (ui_in[7:6] == 2'b11) ? (ui_in[0] ? mem_rdata : alu_result) :
-                                                     pc_current[7:0];
-
-    assign uo_out = debug_out;
+    assign uo_out = pc_current[7:0];
 
     // ========================================================================
     // MODULES INTERNES
@@ -152,8 +129,6 @@ module tt_um_cpu (
 
     assign reg_write_data = (reg_write_src == 2'b01) ? mem_rdata : alu_result;
     
-    wire [7:0] debug_reg;
-
     RegisterFile regfile (
         .clk(clk),
         .rst(rst | !ena),
@@ -164,9 +139,7 @@ module tt_um_cpu (
         .addr1_r(addr1_select),
         .addr2_r(addr2_select),
         .out1_r(reg_data1),
-        .out2_r(reg_data2),
-        .addr3_r(ui_in[2:0]),
-        .out3_r(debug_reg)
+        .out2_r(reg_data2)
     );
 
     wire [7:0] alu_operand_b = (alu_src) ? alu_immediate : reg_data2;
@@ -198,20 +171,11 @@ module tt_um_cpu (
         .next_pc(next_pc) 
     );
 
-    // While a memory-debug read is selected, borrow the read port: force
-    // mem_read and swap the address for the debug-selected one. This never
-    // touches mem_write, so it can't corrupt memory; it can only momentarily
-    // change what mem_rdata shows (irrelevant unless a LOAD's own write-back
-    // happens on that exact cycle, which debug reads — done after a test
-    // program is done running — don't overlap in practice).
-    wire [7:0] dm_addr     = debug_mem_active ? {3'b0, ui_in[5:1]} : alu_result;
-    wire       dm_mem_read = mem_read | debug_mem_active;
-
     DataMemory data_mem (
         .clk(clk),
-        .mem_read(dm_mem_read),
+        .mem_read(mem_read),
         .mem_write(mem_write && mem_ready && ena),
-        .addr(dm_addr),
+        .addr(alu_result),
         .wdata(reg_data2),
         .rdata(mem_rdata)
     );
@@ -219,8 +183,6 @@ module tt_um_cpu (
     // ========================================================================
     // LISTE DES ENTRÉES NON UTILISÉES (COMME LE TEMPLATE)
     // ========================================================================
-    // ui_in is now used (debug mux select, see above); only uio_in[7:3] and
-    // uio_in[1:0] remain genuinely unused (uio_in[2] is the SPI MISO line).
-    wire _unused = &{uio_in[7:3], uio_in[1:0], 1'b0};
+    wire _unused = &{ui_in, uio_in[7:3], uio_in[1:0], 1'b0};
 
 endmodule
