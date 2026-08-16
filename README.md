@@ -103,6 +103,32 @@ runs the full TinyTapeout hardening flow via GitHub Actions:
 4. **`viewer`** – Generates the 3D layout viewer and publishes documentation
    via GitHub Pages.
 
+## CI Status / Known Issues
+
+As of the latest `main` run of the pipeline above:
+
+| Job | Status | Notes |
+|---|---|---|
+| `gds` | ✅ Passing | RTL synthesizes and routes cleanly for Sky130A. |
+| `precheck` | ✅ Passing | DRC/LVS and manufacturability checks pass. |
+| `gl_test` | ✅ Passing | Fixed: `test/Makefile` never added `test/spi_flash_sim.v` to `VERILOG_SOURCES`, even though `tb.v` instantiates it — elaboration failed with `Unknown module type: spi_flash_sim`. Root-caused and fixed by including the file unconditionally. |
+| `viewer` | ✅ Passing | 3D layout viewer generates and publishes. |
+
+**Stale unit testbenches** (root-level `*_tb.v`, run via `make.mak`): three of
+them predate recent RTL changes and no longer match current module port
+lists, so they fail to elaborate under Icarus Verilog. They are not part of
+the TinyTapeout CI flow (which uses `test/tb.v` instead), so they don't block
+the hardening pipeline, but they're out of date and should be refreshed:
+
+- `spi` (`ProgramMemory_SPI_tb.v`) — instantiates `ProgramMemory_SPI`, but the
+  module in `src/ProgramMemory_SPI.v` is actually named `ProgramMemory_SPI_RAM`.
+- `control` (`ControlUnit_tb.v`) — references ports (`is_branch`, ...) that no
+  longer exist on `ControlUnit`.
+- `pc` (`ProgramCounter_tb.v`) — references ports (`branch_en`, `branch_addr`)
+  that no longer exist on `ProgramCounter`.
+
+`alu`, `cpu`, `data`, `flag`, and `reg` all build and pass with `make -f make.mak <target>`.
+
 ## Tools Used
 
 - **Verilog** – RTL design and testbenches
