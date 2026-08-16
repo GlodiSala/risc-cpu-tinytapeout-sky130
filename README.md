@@ -112,8 +112,42 @@ the Sky130A PDK and produces a tapeout-ready GDSII layout:
 |---|---|
 | Synthesis + place & route (`gds`) | ✅ Clean build, no blocking errors |
 | DRC / LVS manufacturability precheck (`precheck`) | ✅ Clean |
-| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing |
+| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing (fixed in [#3](https://github.com/GlodiSala/risc-cpu-tinytapeout-sky130/pull/3): the testbench used to reach into internal RTL signal names that don't survive synthesis) |
 | 3D viewer + docs publish (`viewer`) | ✅ Published |
+
+**Post-route stats** (from the `gds` job's routing/cell-usage summary):
+
+| Metric | Value |
+|---|---|
+| Routing utilization | 60.9 % |
+| Total wire length | 62,943 µm |
+| Total cells (excl. fill/tap) | 2,169 |
+| Flip-flops | 391 |
+| Combinational logic | 497 |
+| Multiplexers | 341 |
+| Fill + tap cells | 1,640 + 456 |
+
+<details>
+<summary>Full cell breakdown by category</summary>
+
+| Category | Cells | Count |
+|---|---|---|
+| Fill | decap, fill | 1,640 |
+| Combo logic | o22a, o221a, o2111a, or3b, a31o, and4bb, a32o, nor3b, or4bb, a211o, o31a, o21bai, and2b, and3b, a22oi, a22o, o41a, o211a, o21ba, o21ai, o21a, or4b, o221ai, a221oi, a221o, a21o, a21oi, o211ai, a2bb2o, a32oi, a31oi, o311a, o2111ai, a21bo, o2bb2a, a2111oi, o32a, o2bb2ai, o22ai, o31ai | 497 |
+| Tap | tapvpwrvgnd | 456 |
+| Flip-flops | dfxtp | 391 |
+| Misc | conb, dlymetal6s2s, dlygate4sd3 | 368 |
+| Multiplexer | mux2, mux4 | 341 |
+| Buffer | clkbuf, buf, bufinv | 165 |
+| OR | or2, or4, or3, xor2 | 121 |
+| AND | and2, and3, and4, a21boi | 94 |
+| NOR | nor2, xnor2, nor3 | 76 |
+| NAND | nand3, nand2, nand2b, nand4 | 63 |
+| Inverter | inv | 43 |
+| Clock | clkinv | 8 |
+| Diode | diode | 2 |
+
+</details>
 
 **Chip layout preview:**
 
