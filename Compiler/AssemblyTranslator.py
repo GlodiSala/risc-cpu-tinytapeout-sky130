@@ -1,20 +1,10 @@
 """
 Assembly code translator for the custom instruction set.
 
-⚠️ KNOWN BUG — do not trust this tool's output yet: it encodes register
-operands as 4 bits (`format(reg_num, '04b')`), but the actual hardware
-(src/ControlUnit.v) only has 8 registers addressed with 3-bit fields. For
-any R-type instruction this produces a completely different bit pattern
-than what the CPU decodes — e.g. this translator encodes
-"add R3 R1 R2" as 0x0312, but the real, RTL-verified encoding (used
-throughout the test suite) is 0x0650. Several immediate-field layouts
-(e.g. LOADI's 1-bit gap between the register and immediate fields) are
-also not modeled.
-
-For a verified reference implementation of this ISA's encoding, see
-test/isa_asm.py, whose formulas are derived directly from
-ControlUnit.v/BranchUnit.v and cross-checked against known-good hex from
-the test programs (all passing, including on the gate-level netlist).
+Bit layouts are derived directly from src/ControlUnit.v / src/BranchUnit.v
+(the RTL decode logic) and match test/isa_asm.py, the assembler used by the
+cocotb test suite — cross-checked against known-good hex from those tests
+(e.g. "add R3 R1 R2" -> 0x0650, "cmp R3 R4" -> 0xF700).
 """
 
 import os
@@ -47,15 +37,41 @@ op_operands = {
     'or': ['R', 'R', 'R'],       # RD, RS1, RS2
     'xor': ['R', 'R', 'R'],      # RD, RS1, RS2
     'loadi': ['R', 'I8'],         # RD, Immediate
-    'load': ['R', 'R', 'I4'],     # RD, RS1 (Base), Offset
-    'store': ['R', 'R', 'I4'],    # RS2 (Source), RS1 (Base), Offset
+    'load': ['R', 'R', 'I4'],     # RD, RS (Base), Offset
+    'store': ['R', 'R', 'I4'],    # RS (Source), RS (Base), Offset
     'jmp': ['I12'],                # Offset
     'brz': ['I12'],                # Offset
     'brnz': ['I12'],               # Offset
     'brnn': ['I12'],               # Offset
-    'shl': ['R', 'R', 'I1', 'I3'], # RD, RS1, imm?, imm
-    'shr': ['R', 'R', 'I1', 'I3'], # RD, RS1, imm?, imm
+    'shl': ['R', 'I4'],            # RD (shifted in place), shift amount
+    'shr': ['R', 'I4'],            # RD (shifted in place), shift amount
     'cmp': ['R', 'R']            # RS1, RS2
+}
+
+# Bit layout for each mnemonic, matching src/ControlUnit.v exactly. Each
+# entry is a list of (operand_index_or_None, bit_width) tuples from MSB to
+# LSB, filling the 12 bits after the 4-bit opcode. `None` means a fixed
+# padding field (always 0) rather than an operand — several instructions
+# have don't-care gaps between fields (e.g. 1 bit between ADDI/LOADI's
+# register and immediate), which a naive "concatenate operands in order"
+# scheme can't represent.
+_LAYOUT = {
+    'add':   [(0, 3), (1, 3), (2, 3), (None, 3)],
+    'sub':   [(0, 3), (1, 3), (2, 3), (None, 3)],
+    'and':   [(0, 3), (1, 3), (2, 3), (None, 3)],
+    'or':    [(0, 3), (1, 3), (2, 3), (None, 3)],
+    'xor':   [(0, 3), (1, 3), (2, 3), (None, 3)],
+    'addi':  [(0, 3), (None, 1), (1, 8)],
+    'loadi': [(0, 3), (None, 1), (1, 8)],
+    'load':  [(0, 3), (1, 3), (None, 2), (2, 4)],
+    'store': [(0, 3), (1, 3), (None, 2), (2, 4)],
+    'jmp':   [(0, 12)],
+    'brz':   [(0, 12)],
+    'brnz':  [(0, 12)],
+    'brnn':  [(0, 12)],
+    'shl':   [(0, 3), (None, 3), (True, 1), (1, 4), (None, 1)],  # True = immediate-mode flag (always 1: register-mode shift amounts alias this same bit, so only immediate mode is supported)
+    'shr':   [(0, 3), (None, 3), (True, 1), (1, 4), (None, 1)],
+    'cmp':   [(0, 3), (1, 3), (None, 6)],
 }
 
 # TODO: implement pseudo-instructions to add: nop, shl_r, shl_i, shr_r, shr_i
@@ -128,8 +144,10 @@ def check_register_operand(operand, idx, op_code, line):
     if not operand.startswith('R'):
         print(f"Error: Expected register for operand {idx+1} in '{op_code}' but got '{operand}' in line: {line}")
         return False
-    if not operand[1:].isdigit() or int(operand[1:]) < 0 or int(operand[1:]) > 15:
-        print(f"Error: Invalid register number '{operand}' in line: {line}")
+    # Only 8 registers (R0-R7) exist in hardware — addr fields are 3 bits
+    # wide (src/register_file.v, src/ControlUnit.v).
+    if not operand[1:].isdigit() or int(operand[1:]) < 0 or int(operand[1:]) > 7:
+        print(f"Error: Invalid register number '{operand}' (must be R0-R7) in line: {line}")
         return False
     return True
 
@@ -180,30 +198,34 @@ def check_decimal_immediate(operand, line, exepcted_length):
         return False
     return True
 
+def parse_operand_value(operand, operand_type):
+    """Parses a register ('R3' -> 3) or immediate (decimal/0b.../0x...) operand."""
+    if operand_type == 'R':
+        return int(operand[1:])
+    if operand.startswith('0b'):
+        return int(operand[2:], 2)
+    if operand.startswith('0x'):
+        return int(operand[2:], 16)
+    return int(operand)
+
 def translate_line(line):
     op_code = line.split()[0]
     operands = line.split()[1:]
-    output = op_codes[op_code] # Start with the opcode
+    operand_types = op_operands[op_code]
 
-    operands_types = op_operands[op_code]
+    values = [parse_operand_value(op, operand_types[i]) for i, op in enumerate(operands)]
 
-    for i, operand in enumerate(operands):
-        if operands_types[i] == 'R':
-            # Register operand
-            reg_num = int(operand[1:])
-            output += format(reg_num, '04b')
+    output = op_codes[op_code]  # 4-bit opcode
+    for field_ref, width in _LAYOUT[op_code]:
+        if field_ref is None:
+            value = 0
+        elif field_ref is True:
+            value = 1
         else:
-            target_length = int(operands_types[i][1:])
-            imm_as_int = 0
-            if operand.startswith('0b'):
-                imm_as_int = int(operand[2:], 2)
-            elif operand.startswith('0x'):
-                imm_as_int = int(operand[2:], 16)
-            else:
-                imm_as_int = int(operand)
-            output += format(imm_as_int, f'0{target_length}b')
+            value = values[field_ref] & ((1 << width) - 1)
+        output += format(value, f'0{width}b')
 
-
+    assert len(output) == 16, f"Internal error: {op_code} encoded to {len(output)} bits, expected 16"
     return output
 
 def translate_code(source_code):

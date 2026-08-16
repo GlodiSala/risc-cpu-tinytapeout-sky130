@@ -6,11 +6,6 @@ Sky130 open-source PDK. The CPU fetches its program from external SPI RAM,
 decodes a 15-instruction ISA, and executes it on a small register-file/ALU
 datapath with branch and data-memory support.
 
-Targets a TinyTapeout **1x2** tile. The design didn't fit in a 1x1 tile at
-the achievable placement density, so 1x2 is what the physical implementation
-actually needed — `info.yaml`'s `tiles: "1x2"` and `config.json`'s
-`FP_SIZING: "absolute"` reflect that fixed die size.
-
 ## Architecture
 
 ![Block diagram of tt_um_cpu](docs/assets/architecture.svg)
@@ -57,8 +52,7 @@ actually needed — `info.yaml`'s `tiles: "1x2"` and `config.json`'s
 │   ├── tb.v, test.py, spi_flash_sim.v, isa_asm.py
 ├── testbenches/            # Per-module Icarus Verilog testbenches (see make.mak)
 ├── Compiler/               # Assembly translator + example programs
-│   ├── AssemblyTranslator.py  # ⚠️ known encoding bug, see file header —
-│   │                           #    use test/isa_asm.py as the verified reference
+│   ├── AssemblyTranslator.py
 │   ├── Source/
 │   └── Output/
 ├── docs/                   # Architecture notes, GitHub Pages ISA doc site
