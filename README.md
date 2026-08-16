@@ -1,0 +1,113 @@
+# RISC CPU – TinyTapeout / Sky130
+
+A custom 16-bit RISC CPU implemented in Verilog, designed for silicon tape-out
+on the [TinyTapeout](https://tinytapeout.com/) platform using the SkyWater
+Sky130 open-source PDK. The CPU fetches its program from external SPI RAM,
+decodes a 15-instruction ISA, and executes it on a small register-file/ALU
+datapath with branch and data-memory support.
+
+## Architecture
+
+```
+                    ┌────────────────────┐
+                    │   External SPI RAM │
+                    │ (ProgramMemory_SPI)│
+                    └──────────┬─────────┘
+                               │ instruction
+                               ▼
+                    ┌────────────────────┐
+                    │   ProgramCounter    │
+                    └──────────┬─────────┘
+                               │ PC / instruction
+                               ▼
+                    ┌────────────────────┐
+                    │    ControlUnit      │
+                    │ (opcode → signals)  │
+                    └──────────┬─────────┘
+                               │ control signals
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+      ┌───────────────┐ ┌────────────┐ ┌────────────────┐
+      │ RegisterFile   │ │    ALU     │ │  FlagRegister   │
+      └───────┬────────┘ └─────┬──────┘ └────────┬────────┘
+              │                │                 │
+              └────────┬───────┴────────┬────────┘
+                        ▼                ▼
+                ┌───────────────┐ ┌──────────────┐
+                │  BranchUnit    │ │ DataMemory   │
+                └───────────────┘ └──────────────┘
+```
+
+## Instruction Set (ISA)
+
+15 instructions, 4-bit opcode (see [`defines.vh`](defines.vh)):
+
+| Mnemonic | Opcode (bin) | Description                     |
+|----------|--------------|----------------------------------|
+| `ADD`    | `0000`       | Add two registers                |
+| `ADDI`   | `0001`       | Add immediate                    |
+| `SUB`    | `0010`       | Subtract two registers           |
+| `AND`    | `0011`       | Bitwise AND                      |
+| `OR`     | `0100`       | Bitwise OR                       |
+| `XOR`    | `0101`       | Bitwise XOR                      |
+| `LI`     | `0110`       | Load immediate                   |
+| `L`      | `0111`       | Load from data memory            |
+| `ST`     | `1000`       | Store to data memory             |
+| `JMP`    | `1001`       | Unconditional jump               |
+| `BRZ`    | `1010`       | Branch if zero                   |
+| `BRNZ`   | `1011`       | Branch if not zero                |
+| `BRNS`   | `1100`       | Branch if not negative/sign      |
+| `SHL`    | `1101`       | Shift left                       |
+| `SHR`    | `1110`       | Shift right                      |
+| `CMP`    | `1111`       | Compare (sets flags)             |
+
+## File Structure
+
+```
+├── src/                  # Synthesizable RTL (source of truth for the tape-out)
+│   ├── tt_um_cpu.v        # Top-level TinyTapeout module
+│   ├── ALU.v
+│   ├── ControlUnit.v
+│   ├── BranchUnit.v
+│   ├── DataMemory.v
+│   ├── FlagRegister.v
+│   ├── ProgramCounter.v
+│   ├── ProgramMemory_SPI.v
+│   ├── register_file.v
+│   ├── defines.vh
+│   └── config.json         # OpenLane hardening config (mirrors root config.json)
+├── Compiler/              # Assembly compiler/translator and example programs
+│   ├── AssemblyTranslator.py
+│   ├── Source/
+│   └── Output/
+├── test/                  # cocotb/Icarus test harness used by the TT CI flow
+│   ├── tb.v, sim_test.py, test.py, spi_flash_sim.v
+├── *_tb.v                 # Per-module Icarus Verilog testbenches (root level)
+├── info.yaml              # TinyTapeout project metadata (pinout, source list)
+├── config.json             # OpenLane hardening configuration
+├── make.mak                # Convenience Makefile for running individual testbenches
+└── .github/workflows/      # CI/CD pipeline (see below)
+```
+
+## CI/CD Pipeline
+
+On every push to `main`, [`.github/workflows/gds.yaml`](.github/workflows/gds.yaml)
+runs the full TinyTapeout hardening flow via GitHub Actions:
+
+1. **`gds`** – Synthesis + place-and-route through OpenLane, producing the
+   final GDSII layout for the Sky130A PDK.
+2. **`precheck`** – TinyTapeout precheck (DRC/LVS and manufacturability
+   rules) against the generated GDS.
+3. **`gl_test`** – Gate-level simulation of the routed netlist to confirm
+   functional equivalence with the RTL.
+4. **`viewer`** – Generates the 3D layout viewer and publishes documentation
+   via GitHub Pages.
+
+## Tools Used
+
+- **Verilog** – RTL design and testbenches
+- **Icarus Verilog** – RTL simulation (`iverilog`/`vvp`)
+- **Python** – Assembly compiler/translator and cocotb-based tests
+- **OpenLane** – RTL-to-GDS synthesis and hardening
+- **Sky130A (SkyWater PDK)** – Open-source silicon process
+- **TinyTapeout** – Shared-die tape-out program and CI tooling
