@@ -51,15 +51,14 @@ module tb ();
       .rst_n  (rst_n)
   );
   
-  // Simulateur de Flash SPI
+  // Simulateur de Flash SPI (suit le protocole depuis le bus, pas de
+  // référence hiérarchique vers l'intérieur du DUT — nécessaire pour que
+  // ça marche aussi contre la netlist gate-level synthétisée).
   spi_flash_sim flash_sim (
       .spi_cs(spi_cs),
       .spi_sck(spi_sck),
       .spi_mosi(spi_mosi),
-      .spi_miso(spi_miso),
-      .pc_current(user_project.pc_current),
-      .spi_state(user_project.program_mem.state),
-      .bit_cnt(user_project.program_mem.bit_cnt)
+      .spi_miso(spi_miso)
   );
 
 endmodule
