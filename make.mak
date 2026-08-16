@@ -5,18 +5,19 @@ MODULES = $(SRC)/ALU.v $(SRC)/BranchUnit.v $(SRC)/ControlUnit.v $(SRC)/DataMemor
           $(SRC)/register_file.v $(SRC)/defines.vh
 
 # Flags Icarus Verilog
+TB = testbenches
 IVFLAGS = -g2005-sv -I. -I$(SRC)
 
 # Testbenches individuels
-ALU_TB = ALU_tb.v
-BRANCH_TB = BranchUnit_tb.v
-CONTROL_TB = ControlUnit_tb.v
-DATA_TB = DataMemory_tb.v
-FLAG_TB = FlagRegister_tb.v
-PC_TB = ProgramCounter_tb.v
-SPI_TB = ProgramMemory_SPI_tb.v
-REG_TB = register_file_tb.v
-CPU_TB = tt_um_CPU_tb.v $(SRC)/tt_um_cpu.v
+ALU_TB = $(TB)/ALU_tb.v
+BRANCH_TB = $(TB)/BranchUnit_tb.v
+CONTROL_TB = $(TB)/ControlUnit_tb.v
+DATA_TB = $(TB)/DataMemory_tb.v
+FLAG_TB = $(TB)/FlagRegister_tb.v
+PC_TB = $(TB)/ProgramCounter_tb.v
+SPI_TB = $(TB)/ProgramMemory_SPI_tb.v
+REG_TB = $(TB)/register_file_tb.v
+CPU_TB = $(TB)/tt_um_CPU_tb.v $(SRC)/tt_um_cpu.v
 
 # Règles
 all: help

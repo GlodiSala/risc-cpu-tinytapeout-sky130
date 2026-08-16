@@ -6,37 +6,14 @@ Sky130 open-source PDK. The CPU fetches its program from external SPI RAM,
 decodes a 15-instruction ISA, and executes it on a small register-file/ALU
 datapath with branch and data-memory support.
 
+Targets a TinyTapeout **1x2** tile. The design didn't fit in a 1x1 tile at
+the achievable placement density, so 1x2 is what the physical implementation
+actually needed — `info.yaml`'s `tiles: "1x2"` and `config.json`'s
+`FP_SIZING: "absolute"` reflect that fixed die size.
+
 ## Architecture
 
-```
-                    ┌────────────────────┐
-                    │   External SPI RAM │
-                    │ (ProgramMemory_SPI)│
-                    └──────────┬─────────┘
-                               │ instruction
-                               ▼
-                    ┌────────────────────┐
-                    │   ProgramCounter    │
-                    └──────────┬─────────┘
-                               │ PC / instruction
-                               ▼
-                    ┌────────────────────┐
-                    │    ControlUnit      │
-                    │ (opcode → signals)  │
-                    └──────────┬─────────┘
-                               │ control signals
-              ┌────────────────┼────────────────┐
-              ▼                ▼                ▼
-      ┌───────────────┐ ┌────────────┐ ┌────────────────┐
-      │ RegisterFile   │ │    ALU     │ │  FlagRegister   │
-      └───────┬────────┘ └─────┬──────┘ └────────┬────────┘
-              │                │                 │
-              └────────┬───────┴────────┬────────┘
-                        ▼                ▼
-                ┌───────────────┐ ┌──────────────┐
-                │  BranchUnit    │ │ DataMemory   │
-                └───────────────┘ └──────────────┘
-```
+![Block diagram of tt_um_cpu](docs/assets/architecture.svg)
 
 ## Instruction Set (ISA)
 
@@ -64,8 +41,8 @@ datapath with branch and data-memory support.
 ## File Structure
 
 ```
-├── src/                  # Synthesizable RTL (source of truth for the tape-out)
-│   ├── tt_um_cpu.v        # Top-level TinyTapeout module
+├── src/                   # Synthesizable RTL (source of truth for the tape-out)
+│   ├── tt_um_cpu.v         # Top-level TinyTapeout module
 │   ├── ALU.v
 │   ├── ControlUnit.v
 │   ├── BranchUnit.v
@@ -75,18 +52,20 @@ datapath with branch and data-memory support.
 │   ├── ProgramMemory_SPI.v
 │   ├── register_file.v
 │   ├── defines.vh
-│   └── config.json         # OpenLane hardening config (mirrors root config.json)
-├── Compiler/              # Assembly compiler/translator and example programs
-│   ├── AssemblyTranslator.py
+│   └── config.json          # OpenLane hardening config (mirrors root config.json)
+├── test/                   # cocotb/Icarus test harness used by the TT CI flow
+│   ├── tb.v, test.py, spi_flash_sim.v, isa_asm.py
+├── testbenches/            # Per-module Icarus Verilog testbenches (see make.mak)
+├── Compiler/               # Assembly translator + example programs
+│   ├── AssemblyTranslator.py  # ⚠️ known encoding bug, see file header —
+│   │                           #    use test/isa_asm.py as the verified reference
 │   ├── Source/
 │   └── Output/
-├── test/                  # cocotb/Icarus test harness used by the TT CI flow
-│   ├── tb.v, sim_test.py, test.py, spi_flash_sim.v
-├── *_tb.v                 # Per-module Icarus Verilog testbenches (root level)
-├── info.yaml              # TinyTapeout project metadata (pinout, source list)
-├── config.json             # OpenLane hardening configuration
-├── make.mak                # Convenience Makefile for running individual testbenches
-└── .github/workflows/      # CI/CD pipeline (see below)
+├── docs/                   # Architecture notes, GitHub Pages ISA doc site
+├── info.yaml               # TinyTapeout project metadata (pinout, source list)
+├── config.json              # OpenLane hardening configuration
+├── make.mak                 # Convenience Makefile for running individual testbenches
+└── .github/workflows/       # CI/CD pipeline (see below)
 ```
 
 ## CI/CD Pipeline
@@ -112,7 +91,7 @@ the Sky130A PDK and produces a tapeout-ready GDSII layout:
 |---|---|
 | Synthesis + place & route (`gds`) | ✅ Clean build, no blocking errors |
 | DRC / LVS manufacturability precheck (`precheck`) | ✅ Clean |
-| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing (fixed in [#3](https://github.com/GlodiSala/risc-cpu-tinytapeout-sky130/pull/3): the testbench used to reach into internal RTL signal names that don't survive synthesis) |
+| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing (see [#5](https://github.com/GlodiSala/risc-cpu-tinytapeout-sky130/pull/5): the old testbench reached into internal RTL signal names that don't survive synthesis; each test program now checks its own result and reports pass/fail via the PC, observable on real pins in both RTL and gate-level sim) |
 | 3D viewer + docs publish (`viewer`) | ✅ Published |
 
 **Post-route stats** (from the `gds` job's routing/cell-usage summary):
@@ -161,12 +140,12 @@ on every push to `main` and published via GitHub Pages.
 <details>
 <summary>Notes on test coverage</summary>
 
-Three root-level unit testbenches (`ProgramMemory_SPI_tb.v`, `ControlUnit_tb.v`,
-`ProgramCounter_tb.v`, run via `make.mak`) predate recent RTL changes and no
-longer match current module port lists, so they fail to elaborate under
-Icarus Verilog. They are not part of the TinyTapeout CI flow above (which
-uses `test/tb.v` instead), so they don't affect the hardening pipeline, but
-they're out of date and should be refreshed:
+Three of the `testbenches/` unit testbenches (`ProgramMemory_SPI_tb.v`,
+`ControlUnit_tb.v`, `ProgramCounter_tb.v`, run via `make.mak`) predate recent
+RTL changes and no longer match current module port lists, so they fail to
+elaborate under Icarus Verilog. They are not part of the TinyTapeout CI flow
+above (which uses `test/tb.v` instead), so they don't affect the hardening
+pipeline, but they're out of date and should be refreshed:
 
 - `spi` (`ProgramMemory_SPI_tb.v`) — instantiates `ProgramMemory_SPI`, but the
   module in `src/ProgramMemory_SPI.v` is actually named `ProgramMemory_SPI_RAM`.

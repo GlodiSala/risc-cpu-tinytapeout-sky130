@@ -1,5 +1,20 @@
 """
 Assembly code translator for the custom instruction set.
+
+⚠️ KNOWN BUG — do not trust this tool's output yet: it encodes register
+operands as 4 bits (`format(reg_num, '04b')`), but the actual hardware
+(src/ControlUnit.v) only has 8 registers addressed with 3-bit fields. For
+any R-type instruction this produces a completely different bit pattern
+than what the CPU decodes — e.g. this translator encodes
+"add R3 R1 R2" as 0x0312, but the real, RTL-verified encoding (used
+throughout the test suite) is 0x0650. Several immediate-field layouts
+(e.g. LOADI's 1-bit gap between the register and immediate fields) are
+also not modeled.
+
+For a verified reference implementation of this ISA's encoding, see
+test/isa_asm.py, whose formulas are derived directly from
+ControlUnit.v/BranchUnit.v and cross-checked against known-good hex from
+the test programs (all passing, including on the gate-level netlist).
 """
 
 import os
