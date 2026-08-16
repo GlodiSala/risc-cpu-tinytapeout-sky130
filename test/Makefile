@@ -41,6 +41,7 @@ endif
 COMPILE_ARGS += -I$(SRC_DIR)
 
 # Testbench
+VERILOG_SOURCES += $(PWD)/spi_flash_sim.v
 VERILOG_SOURCES += $(PWD)/tb.v
 TOPLEVEL = tb
 COCOTB_TEST_MODULES = test
