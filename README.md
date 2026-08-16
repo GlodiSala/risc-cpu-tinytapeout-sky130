@@ -103,6 +103,48 @@ runs the full TinyTapeout hardening flow via GitHub Actions:
 4. **`viewer`** – Generates the 3D layout viewer and publishes documentation
    via GitHub Pages.
 
+## OpenLane Build Result
+
+The RTL has been carried end-to-end through the OpenLane hardening flow for
+the Sky130A PDK and produces a tapeout-ready GDSII layout:
+
+| Stage | Result |
+|---|---|
+| Synthesis + place & route (`gds`) | ✅ Clean build, no blocking errors |
+| DRC / LVS manufacturability precheck (`precheck`) | ✅ Clean |
+| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing |
+| 3D viewer + docs publish (`viewer`) | ✅ Published |
+
+**Chip layout preview:**
+
+![GDS render](https://glodisala.github.io/risc-cpu-tinytapeout-sky130/gds_render.png)
+
+**[Open the interactive 3D viewer →](https://gds-viewer.tinytapeout.com/?model=https://glodisala.github.io/risc-cpu-tinytapeout-sky130/tinytapeout.oas&pdk=sky130A)**
+
+Both are regenerated automatically by [`.github/workflows/gds.yaml`](.github/workflows/gds.yaml)
+on every push to `main` and published via GitHub Pages.
+
+<details>
+<summary>Notes on test coverage</summary>
+
+Three root-level unit testbenches (`ProgramMemory_SPI_tb.v`, `ControlUnit_tb.v`,
+`ProgramCounter_tb.v`, run via `make.mak`) predate recent RTL changes and no
+longer match current module port lists, so they fail to elaborate under
+Icarus Verilog. They are not part of the TinyTapeout CI flow above (which
+uses `test/tb.v` instead), so they don't affect the hardening pipeline, but
+they're out of date and should be refreshed:
+
+- `spi` (`ProgramMemory_SPI_tb.v`) — instantiates `ProgramMemory_SPI`, but the
+  module in `src/ProgramMemory_SPI.v` is actually named `ProgramMemory_SPI_RAM`.
+- `control` (`ControlUnit_tb.v`) — references ports (`is_branch`, ...) that no
+  longer exist on `ControlUnit`.
+- `pc` (`ProgramCounter_tb.v`) — references ports (`branch_en`, `branch_addr`)
+  that no longer exist on `ProgramCounter`.
+
+`alu`, `cpu`, `data`, `flag`, and `reg` all build and pass with `make -f make.mak <target>`.
+
+</details>
+
 ## Tools Used
 
 - **Verilog** – RTL design and testbenches

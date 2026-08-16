@@ -1,9 +1,11 @@
-# Modules source
-MODULES = ALU.v BranchUnit.v ControlUnit.v DataMemory.v FlagRegister.v \
-          ProgramCounter.v ProgramMemory_SPI.v register_file.v defines.vh
+# Modules source (RTL lives in src/)
+SRC = src
+MODULES = $(SRC)/ALU.v $(SRC)/BranchUnit.v $(SRC)/ControlUnit.v $(SRC)/DataMemory.v \
+          $(SRC)/FlagRegister.v $(SRC)/ProgramCounter.v $(SRC)/ProgramMemory_SPI.v \
+          $(SRC)/register_file.v $(SRC)/defines.vh
 
 # Flags Icarus Verilog
-IVFLAGS = -g2005-sv -I.
+IVFLAGS = -g2005-sv -I. -I$(SRC)
 
 # Testbenches individuels
 ALU_TB = ALU_tb.v
@@ -14,7 +16,7 @@ FLAG_TB = FlagRegister_tb.v
 PC_TB = ProgramCounter_tb.v
 SPI_TB = ProgramMemory_SPI_tb.v
 REG_TB = register_file_tb.v
-CPU_TB = tt_um_CPU_tb.v tt_um_CPU.v
+CPU_TB = tt_um_CPU_tb.v $(SRC)/tt_um_cpu.v
 
 # Règles
 all: help
