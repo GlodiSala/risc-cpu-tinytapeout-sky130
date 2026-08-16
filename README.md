@@ -8,35 +8,7 @@ datapath with branch and data-memory support.
 
 ## Architecture
 
-```
-                    ┌────────────────────┐
-                    │   External SPI RAM │
-                    │ (ProgramMemory_SPI)│
-                    └──────────┬─────────┘
-                               │ instruction
-                               ▼
-                    ┌────────────────────┐
-                    │   ProgramCounter    │
-                    └──────────┬─────────┘
-                               │ PC / instruction
-                               ▼
-                    ┌────────────────────┐
-                    │    ControlUnit      │
-                    │ (opcode → signals)  │
-                    └──────────┬─────────┘
-                               │ control signals
-              ┌────────────────┼────────────────┐
-              ▼                ▼                ▼
-      ┌───────────────┐ ┌────────────┐ ┌────────────────┐
-      │ RegisterFile   │ │    ALU     │ │  FlagRegister   │
-      └───────┬────────┘ └─────┬──────┘ └────────┬────────┘
-              │                │                 │
-              └────────┬───────┴────────┬────────┘
-                        ▼                ▼
-                ┌───────────────┐ ┌──────────────┐
-                │  BranchUnit    │ │ DataMemory   │
-                └───────────────┘ └──────────────┘
-```
+![Block diagram of tt_um_cpu](docs/assets/architecture.svg)
 
 ## Instruction Set (ISA)
 
@@ -64,8 +36,8 @@ datapath with branch and data-memory support.
 ## File Structure
 
 ```
-├── src/                  # Synthesizable RTL (source of truth for the tape-out)
-│   ├── tt_um_cpu.v        # Top-level TinyTapeout module
+├── src/                   # Synthesizable RTL (source of truth for the tape-out)
+│   ├── tt_um_cpu.v         # Top-level TinyTapeout module
 │   ├── ALU.v
 │   ├── ControlUnit.v
 │   ├── BranchUnit.v
@@ -75,18 +47,19 @@ datapath with branch and data-memory support.
 │   ├── ProgramMemory_SPI.v
 │   ├── register_file.v
 │   ├── defines.vh
-│   └── config.json         # OpenLane hardening config (mirrors root config.json)
-├── Compiler/              # Assembly compiler/translator and example programs
+│   └── config.json          # OpenLane hardening config (mirrors root config.json)
+├── test/                   # cocotb/Icarus test harness used by the TT CI flow
+│   ├── tb.v, test.py, spi_flash_sim.v, isa_asm.py
+├── testbenches/            # Per-module Icarus Verilog testbenches (see make.mak)
+├── Compiler/               # Assembly translator + example programs
 │   ├── AssemblyTranslator.py
 │   ├── Source/
 │   └── Output/
-├── test/                  # cocotb/Icarus test harness used by the TT CI flow
-│   ├── tb.v, sim_test.py, test.py, spi_flash_sim.v
-├── *_tb.v                 # Per-module Icarus Verilog testbenches (root level)
-├── info.yaml              # TinyTapeout project metadata (pinout, source list)
-├── config.json             # OpenLane hardening configuration
-├── make.mak                # Convenience Makefile for running individual testbenches
-└── .github/workflows/      # CI/CD pipeline (see below)
+├── docs/                   # Architecture notes, GitHub Pages ISA doc site
+├── info.yaml               # TinyTapeout project metadata (pinout, source list)
+├── config.json              # OpenLane hardening configuration
+├── make.mak                 # Convenience Makefile for running individual testbenches
+└── .github/workflows/       # CI/CD pipeline (see below)
 ```
 
 ## CI/CD Pipeline
@@ -110,22 +83,20 @@ the Sky130A PDK and produces a tapeout-ready GDSII layout:
 
 | Stage | Result |
 |---|---|
-| Synthesis + place & route (`gds`) | ✅ Clean build, no blocking errors |
+| Synthesis + place & route (`gds`) | ✅ Clean build |
 | DRC / LVS manufacturability precheck (`precheck`) | ✅ Clean |
-| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing (fixed in [#3](https://github.com/GlodiSala/risc-cpu-tinytapeout-sky130/pull/3): the testbench used to reach into internal RTL signal names that don't survive synthesis) |
+| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing |
 | 3D viewer + docs publish (`viewer`) | ✅ Published |
 
-**Post-route stats** (from the `gds` job's routing/cell-usage summary):
+### Die utilization
 
 | Metric | Value |
 |---|---|
-| Routing utilization | 60.9 % |
-| Total wire length | 62,943 µm |
-| Total cells (excl. fill/tap) | 2,169 |
+| Die size | 161 × 226 µm — TinyTapeout 1x2 tile |
+| Utilization | `██████████████████░░░░░░░░░░░░` 60.9 % |
+| Standard cells | 2,169 (+ 1,640 fill, 456 tap) |
 | Flip-flops | 391 |
-| Combinational logic | 497 |
-| Multiplexers | 341 |
-| Fill + tap cells | 1,640 + 456 |
+| Total wire length | 62,943 µm |
 
 <details>
 <summary>Full cell breakdown by category</summary>
@@ -149,6 +120,20 @@ the Sky130A PDK and produces a tapeout-ready GDSII layout:
 
 </details>
 
+### Timing & verification
+
+Signed off at 50 MHz (`CLOCK_PERIOD: 20` ns, `config.json`), across all PVT corners:
+
+| Check | Result |
+|---|---|
+| Setup timing | ✅ No violations |
+| Hold timing | ✅ No violations |
+| Max slew | ✅ No violations |
+| Max capacitance | ✅ No violations |
+| LVS (layout vs. schematic) | ✅ Passed |
+| DRC (design rule check) | ✅ Passed |
+| Antenna | ⚠️ 1 pin + 1 net violation flagged — non-blocking (TinyTapeout `precheck` passed), left as a known follow-up |
+
 **Chip layout preview:**
 
 ![GDS render](https://glodisala.github.io/risc-cpu-tinytapeout-sky130/gds_render.png)
@@ -161,12 +146,12 @@ on every push to `main` and published via GitHub Pages.
 <details>
 <summary>Notes on test coverage</summary>
 
-Three root-level unit testbenches (`ProgramMemory_SPI_tb.v`, `ControlUnit_tb.v`,
-`ProgramCounter_tb.v`, run via `make.mak`) predate recent RTL changes and no
-longer match current module port lists, so they fail to elaborate under
-Icarus Verilog. They are not part of the TinyTapeout CI flow above (which
-uses `test/tb.v` instead), so they don't affect the hardening pipeline, but
-they're out of date and should be refreshed:
+Three of the `testbenches/` unit testbenches (`ProgramMemory_SPI_tb.v`,
+`ControlUnit_tb.v`, `ProgramCounter_tb.v`, run via `make.mak`) predate recent
+RTL changes and no longer match current module port lists, so they fail to
+elaborate under Icarus Verilog. They are not part of the TinyTapeout CI flow
+above (which uses `test/tb.v` instead), so they don't affect the hardening
+pipeline, but they're out of date and should be refreshed:
 
 - `spi` (`ProgramMemory_SPI_tb.v`) — instantiates `ProgramMemory_SPI`, but the
   module in `src/ProgramMemory_SPI.v` is actually named `ProgramMemory_SPI_RAM`.
