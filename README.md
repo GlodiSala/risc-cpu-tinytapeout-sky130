@@ -83,22 +83,20 @@ the Sky130A PDK and produces a tapeout-ready GDSII layout:
 
 | Stage | Result |
 |---|---|
-| Synthesis + place & route (`gds`) | ✅ Clean build, no blocking errors |
+| Synthesis + place & route (`gds`) | ✅ Clean build |
 | DRC / LVS manufacturability precheck (`precheck`) | ✅ Clean |
-| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing (see [#5](https://github.com/GlodiSala/risc-cpu-tinytapeout-sky130/pull/5): the old testbench reached into internal RTL signal names that don't survive synthesis; each test program now checks its own result and reports pass/fail via the PC, observable on real pins in both RTL and gate-level sim) |
+| Gate-level simulation vs. routed netlist (`gl_test`) | ✅ Passing |
 | 3D viewer + docs publish (`viewer`) | ✅ Published |
 
-**Post-route stats** (from the `gds` job's routing/cell-usage summary):
+### Die utilization
 
 | Metric | Value |
 |---|---|
-| Routing utilization | 60.9 % |
-| Total wire length | 62,943 µm |
-| Total cells (excl. fill/tap) | 2,169 |
+| Die size | 161 × 226 µm — TinyTapeout 1x2 tile |
+| Utilization | `██████████████████░░░░░░░░░░░░` 60.9 % |
+| Standard cells | 2,169 (+ 1,640 fill, 456 tap) |
 | Flip-flops | 391 |
-| Combinational logic | 497 |
-| Multiplexers | 341 |
-| Fill + tap cells | 1,640 + 456 |
+| Total wire length | 62,943 µm |
 
 <details>
 <summary>Full cell breakdown by category</summary>
@@ -121,6 +119,20 @@ the Sky130A PDK and produces a tapeout-ready GDSII layout:
 | Diode | diode | 2 |
 
 </details>
+
+### Timing & verification
+
+Signed off at 50 MHz (`CLOCK_PERIOD: 20` ns, `config.json`), across all PVT corners:
+
+| Check | Result |
+|---|---|
+| Setup timing | ✅ No violations |
+| Hold timing | ✅ No violations |
+| Max slew | ✅ No violations |
+| Max capacitance | ✅ No violations |
+| LVS (layout vs. schematic) | ✅ Passed |
+| DRC (design rule check) | ✅ Passed |
+| Antenna | ⚠️ 1 pin + 1 net violation flagged — non-blocking (TinyTapeout `precheck` passed), left as a known follow-up |
 
 **Chip layout preview:**
 
